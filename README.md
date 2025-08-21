@@ -1,4 +1,4 @@
-# Liverpool News Bot
+# History News Bot
 
 An automated Go application that uses Google Gemini AI to generate Liverpool FC news content and posts it to X.com (Twitter) every 4 hours via GitHub Actions.
 
