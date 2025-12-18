@@ -391,7 +391,7 @@ func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch crypto news: %v", err)
 	}
-	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nKeep it under 280 characters, engaging, and include hashtags like #Crypto #Blockchain #News.`,
+	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging and informative.\n- Include hashtags like #Crypto #Blockchain #News.`,
 		article.Title, article.Description, article.Source.Name)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.7)
