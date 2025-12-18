@@ -391,7 +391,7 @@ func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch crypto news: %v", err)
 	}
-	fmt.Println(article)
+	fmt.Println("article: ", article)
 	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging and informative.\n- Include hashtags like #Crypto #Blockchain #News.`,
 		article.Title, article.Description, article.Source.Name)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
@@ -529,7 +529,7 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 		return "", fmt.Errorf("failed to fetch latest match: %v", err)
 	}
 	date := match.UtcDate[:10] // YYYY-MM-DD
-	fmt.Println(match)
+	fmt.Println("match: ", match)
 	prompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nMake it concise, engaging, under 280 characters, and include hashtags like #%s #Football.`,
 		leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
