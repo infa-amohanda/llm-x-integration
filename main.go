@@ -530,10 +530,10 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 	}
 	date := match.UtcDate[:10] // YYYY-MM-DD
 	fmt.Println("match: ", match)
-	prompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nMake it concise, engaging, under 280 characters, and include hashtags like #%s #Football.`,
+	prompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging, informative, and detailed.\n- Do not use generic statements.\n- Include hashtags like #%s #Football.`,
 		leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
-	model.SetTemperature(0.7)
+	model.SetTemperature(0.8)
 	model.SetMaxOutputTokens(200)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
@@ -547,6 +547,24 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 	content = strings.Trim(content, "\"")
 	if len(content) > 280 {
 		content = content[:277] + "..."
+	}
+	if len(content) < 100 {
+		// Retry with a stronger prompt if too short
+		retryPrompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Be detailed and informative.\n- Mention key facts, context, and impact.\n- Do not use generic statements.\n- Keep it under 280 characters.\n- Include hashtags like #%s #Football.`,
+			leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
+		resp, err = model.GenerateContent(ctx, genai.Text(retryPrompt))
+		if err != nil {
+			return "", fmt.Errorf("failed to generate summary (retry): %v", err)
+		}
+		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+			return "", fmt.Errorf("no content generated (retry)")
+		}
+		content = fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+		content = strings.TrimSpace(content)
+		content = strings.Trim(content, "\"")
+		if len(content) > 280 {
+			content = content[:277] + "..."
+		}
 	}
 	return content, nil
 }
