@@ -391,11 +391,12 @@ func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch crypto news: %v", err)
 	}
-	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging, informative, and detailed.\n- Do not use generic warnings or vague statements.\n- Include hashtags like #Crypto #Blockchain #News.`,
+	fmt.Println(article)
+	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging and informative.\n- Include hashtags like #Crypto #Blockchain #News.`,
 		article.Title, article.Description, article.Source.Name)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
-	model.SetTemperature(0.8)
-	model.SetMaxOutputTokens(180)
+	model.SetTemperature(0.7)
+	model.SetMaxOutputTokens(150)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate crypto summary: %v", err)
@@ -408,24 +409,6 @@ func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error
 	content = strings.Trim(content, "\"")
 	if len(content) > 280 {
 		content = content[:277] + "..."
-	}
-	if len(content) < 100 {
-		// Retry with a stronger prompt if too short
-		retryPrompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Be detailed and informative.\n- Do not use generic warnings or vague statements.\n- Mention key facts, context, and impact.\n- Keep it under 280 characters.\n- Include hashtags like #Crypto #Blockchain #News.`,
-			article.Title, article.Description, article.Source.Name)
-		resp, err = model.GenerateContent(ctx, genai.Text(retryPrompt))
-		if err != nil {
-			return "", fmt.Errorf("failed to generate crypto summary (retry): %v", err)
-		}
-		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-			return "", fmt.Errorf("no content generated (retry)")
-		}
-		content = fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
-		content = strings.TrimSpace(content)
-		content = strings.Trim(content, "\"")
-		if len(content) > 280 {
-			content = content[:277] + "..."
-		}
 	}
 	return content, nil
 }
