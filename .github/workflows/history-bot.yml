@@ -1,4 +1,4 @@
-name: History Bot (Liverpool FC & India)
+name: Premier League Bot
 
 on:
   schedule:
@@ -38,6 +38,7 @@ jobs:
         X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
         X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
         LIVERPOOL_NEWS_PROMPT: ${{ secrets.LIVERPOOL_NEWS_PROMPT }}
+        FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
       run: |
         echo "Starting History Bot..."
         go run main.go
