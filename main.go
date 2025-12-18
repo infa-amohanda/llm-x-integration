@@ -97,7 +97,7 @@ func NewNewsBot(config *Config) (*NewsBot, error) {
 }
 
 func (nb *NewsBot) generateLiverpoolNews(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-1.5-flash")
+	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
 	model.SetTemperature(0.8) // Increased for more creativity
 	model.SetMaxOutputTokens(150)
 
@@ -292,8 +292,8 @@ func (nb *NewsBot) Run() error {
 	var content string
 	var err error
 
-	// You can choose what type of content to generate:
-	contentType := time.Now().Unix() % 3 // Random selection
+	// Only generate Liverpool content
+	contentType := time.Now().Unix() % 2 // Randomly choose between two Liverpool generators
 
 	switch contentType {
 	case 0:
@@ -302,12 +302,9 @@ func (nb *NewsBot) Run() error {
 	case 1:
 		log.Println("Generating Liverpool FC history variation...")
 		content, err = nb.generateLiverpoolHistoryVariation(ctx)
-	case 2:
-		log.Println("Generating Indian historical content...")
-		content, err = nb.generateIndiaHistory(ctx)
 	default:
-		log.Println("Generating Indian history variation...")
-		content, err = nb.generateIndiaHistoryVariation(ctx)
+		log.Println("Defaulting to Liverpool FC historical content...")
+		content, err = nb.generateLiverpoolNews(ctx)
 	}
 
 	if err != nil {
@@ -467,6 +464,7 @@ Generate only the tweet text, no formatting or quotes.`, topic)
 
 	if len(content) > 280 {
 		content = content[:277] + "..."
+
 	}
 
 	return content, nil
