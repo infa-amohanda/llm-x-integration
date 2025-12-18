@@ -123,7 +123,7 @@ func NewNewsBot(config *Config) (*NewsBot, error) {
 }
 
 func (nb *NewsBot) generateLiverpoolNews(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
+	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.8) // Increased for more creativity
 	model.SetMaxOutputTokens(150)
 
@@ -347,7 +347,7 @@ func (nb *NewsBot) generatePremierLeagueNewsFromAPI(ctx context.Context) (string
 	date := match.UtcDate[:10] // YYYY-MM-DD
 	prompt := fmt.Sprintf(`Generate a tweet about the latest Premier League result:\nDate: %s\n%s %d - %d %s\nMake it concise, engaging, under 280 characters, and include hashtags like #PremierLeague #EPL.`,
 		date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name)
-	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
+	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.7)
 	model.SetMaxOutputTokens(150)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
@@ -367,7 +367,7 @@ func (nb *NewsBot) generatePremierLeagueNewsFromAPI(ctx context.Context) (string
 }
 
 func (nb *NewsBot) generatePremierLeagueNews(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
+	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.7)
 	model.SetMaxOutputTokens(150)
 
@@ -463,7 +463,7 @@ func main() {
 }
 
 func (nb *NewsBot) generateIndiaHistory(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
+	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.8)
 	model.SetMaxOutputTokens(150)
 
