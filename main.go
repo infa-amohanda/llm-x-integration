@@ -354,7 +354,7 @@ func main() {
 }
 
 func (nb *NewsBot) generateIndiaHistory(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-1.5-flash")
+	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
 	model.SetTemperature(0.8)
 	model.SetMaxOutputTokens(150)
 
