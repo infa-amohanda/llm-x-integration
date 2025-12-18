@@ -2,7 +2,7 @@ name: Premier League Bot
 
 on:
   schedule:
-    # Run every 4 hours at minutes 0
+    # Run every 12 hours at minutes 0
     - cron: '0 0,12 * * *'
   workflow_dispatch: # Allow manual triggering
 

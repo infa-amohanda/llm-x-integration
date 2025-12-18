@@ -25,7 +25,8 @@ type Config struct {
 	XAccessToken        string
 	XAccessTokenSecret  string
 	LiverpoolNewsPrompt string
-	FootballDataAPIKey  string // NEW
+	FootballDataAPIKey  string
+	NewsAPIKey          string // NEW
 }
 
 type NewsBot struct {
@@ -72,6 +73,21 @@ type PremierLeagueMatchesResponse struct {
 	Matches []PremierLeagueMatch `json:"matches"`
 }
 
+type NewsAPIArticle struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Url         string `json:"url"`
+	Source      struct {
+		Name string `json:"name"`
+	} `json:"source"`
+}
+
+type NewsAPIResponse struct {
+	Status       string           `json:"status"`
+	TotalResults int              `json:"totalResults"`
+	Articles     []NewsAPIArticle `json:"articles"`
+}
+
 func loadConfig() (*Config, error) {
 	godotenv.Load()
 
@@ -83,6 +99,7 @@ func loadConfig() (*Config, error) {
 		XAccessTokenSecret:  os.Getenv("X_ACCESS_TOKEN_SECRET"),
 		LiverpoolNewsPrompt: os.Getenv("LIVERPOOL_NEWS_PROMPT"),
 		FootballDataAPIKey:  os.Getenv("FOOTBALL_DATA_API_KEY"), // NEW
+		NewsAPIKey:          os.Getenv("NEWS_API_KEY"),          // NEW
 	}
 
 	if config.LiverpoolNewsPrompt == "" {
@@ -98,6 +115,9 @@ func loadConfig() (*Config, error) {
 	}
 	if config.FootballDataAPIKey == "" {
 		return nil, fmt.Errorf("FOOTBALL_DATA_API_KEY is required")
+	}
+	if config.NewsAPIKey == "" {
+		return nil, fmt.Errorf("NEWS_API_KEY is required")
 	}
 
 	return config, nil
@@ -366,6 +386,59 @@ func (nb *NewsBot) generatePremierLeagueNewsFromAPI(ctx context.Context) (string
 	return content, nil
 }
 
+func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error) {
+	article, err := nb.fetchLatestCryptoNews(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch crypto news: %v", err)
+	}
+	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nKeep it under 280 characters, engaging, and include hashtags like #Crypto #Blockchain #News.`,
+		article.Title, article.Description, article.Source.Name)
+	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
+	model.SetTemperature(0.7)
+	model.SetMaxOutputTokens(150)
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate crypto summary: %v", err)
+	}
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no content generated")
+	}
+	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	content = strings.TrimSpace(content)
+	content = strings.Trim(content, "\"")
+	if len(content) > 280 {
+		content = content[:277] + "..."
+	}
+	return content, nil
+}
+
+func (nb *NewsBot) fetchLatestCryptoNews(ctx context.Context) (*NewsAPIArticle, error) {
+	url := "https://newsapi.org/v2/top-headlines?q=crypto&pageSize=1"
+	client := &http.Client{Timeout: 10 * time.Second}
+	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("X-Api-Key", nb.config.NewsAPIKey)
+	resp, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("newsapi.org API error: %s", string(body))
+	}
+	var newsResp NewsAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&newsResp); err != nil {
+		return nil, err
+	}
+	if len(newsResp.Articles) == 0 {
+		return nil, fmt.Errorf("no crypto news found")
+	}
+	return &newsResp.Articles[0], nil
+}
+
 func (nb *NewsBot) generatePremierLeagueNews(ctx context.Context) (string, error) {
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.7)
@@ -413,11 +486,20 @@ Current date context: %s %d, %d`,
 func (nb *NewsBot) Run() error {
 	ctx := context.Background()
 
-	log.Println("Generating Premier League news content from API...")
+	var content string
+	var err error
 
-	content, err := nb.generatePremierLeagueNewsFromAPI(ctx)
+	// Alternate between Premier League and Crypto news
+	if time.Now().Unix()%2 == 0 {
+		log.Println("Generating Premier League news content from API...")
+		content, err = nb.generatePremierLeagueNewsFromAPI(ctx)
+	} else {
+		log.Println("Generating Crypto news content from API...")
+		content, err = nb.generateCryptoNewsFromAPI(ctx)
+	}
+
 	if err != nil {
-		return fmt.Errorf("failed to generate Premier League news: %v", err)
+		return fmt.Errorf("failed to generate news: %v", err)
 	}
 
 	log.Printf("Generated content: %s", content)
