@@ -397,6 +397,7 @@ func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.7)
 	model.SetMaxOutputTokens(200)
+	fmt.Println("prompt: ", prompt)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate crypto summary: %v", err)
@@ -535,6 +536,7 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.8)
 	model.SetMaxOutputTokens(200)
+	fmt.Println("prompt: ", prompt)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate summary: %v", err)
