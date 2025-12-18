@@ -284,31 +284,58 @@ func (nb *NewsBot) postToTwitter(content string) error {
 	return nil
 }
 
+func (nb *NewsBot) generatePremierLeagueNews(ctx context.Context) (string, error) {
+	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
+	model.SetTemperature(0.7)
+	model.SetMaxOutputTokens(150)
+
+	// Get current date for context
+	now := time.Now()
+	currentMonth := now.Format("January")
+	currentDay := now.Day()
+	currentYear := now.Year()
+
+	prompt := fmt.Sprintf(`Generate a concise, engaging tweet with the latest Premier League news as of %s %d, %d.
+
+Requirements:
+- Focus on recent matches, transfers, injuries, standings, or major headlines
+- Mention specific teams, players, or results if possible
+- Keep it under 280 characters
+- Make it interesting for football fans
+- Include relevant hashtags like #PremierLeague #EPL #Football
+- Generate only the tweet text, no quotes or formatting
+
+Current date context: %s %d, %d`,
+		currentMonth, currentDay, currentYear, currentMonth, currentDay, currentYear)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate Premier League news: %v", err)
+	}
+
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no content generated")
+	}
+
+	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	content = strings.TrimSpace(content)
+	content = strings.Trim(content, "\"")
+
+	if len(content) > 280 {
+		content = content[:277] + "..."
+	}
+
+	return content, nil
+}
+
 func (nb *NewsBot) Run() error {
 	ctx := context.Background()
 
-	log.Println("Generating content...")
+	log.Println("Generating Premier League news content...")
 
-	var content string
-	var err error
-
-	// Only generate Liverpool content
-	contentType := time.Now().Unix() % 2 // Randomly choose between two Liverpool generators
-
-	switch contentType {
-	case 0:
-		log.Println("Generating Liverpool FC historical content...")
-		content, err = nb.generateLiverpoolNews(ctx)
-	case 1:
-		log.Println("Generating Liverpool FC history variation...")
-		content, err = nb.generateLiverpoolHistoryVariation(ctx)
-	default:
-		log.Println("Defaulting to Liverpool FC historical content...")
-		content, err = nb.generateLiverpoolNews(ctx)
-	}
-
+	content, err := nb.generatePremierLeagueNews(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to generate content: %v", err)
+		return fmt.Errorf("failed to generate Premier League news: %v", err)
 	}
 
 	log.Printf("Generated content: %s", content)
