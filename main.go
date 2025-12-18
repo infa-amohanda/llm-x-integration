@@ -484,17 +484,99 @@ Current date context: %s %d, %d`,
 	return content, nil
 }
 
+type FootballLeague string
+
+const (
+	PremierLeague FootballLeague = "PL"
+	LaLiga        FootballLeague = "PD"
+	Bundesliga    FootballLeague = "BL1"
+	SerieA        FootballLeague = "SA"
+	Ligue1        FootballLeague = "FL1"
+	IrishPremier  FootballLeague = "IRL"
+)
+
+func (nb *NewsBot) fetchLatestLeagueMatch(ctx context.Context, league FootballLeague) (*PremierLeagueMatch, error) {
+	url := fmt.Sprintf("https://api.football-data.org/v4/competitions/%s/matches?status=FINISHED&limit=1", league)
+	client := &http.Client{Timeout: 10 * time.Second}
+	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("X-Auth-Token", nb.config.FootballDataAPIKey)
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("football-data.org API error: %s", string(body))
+	}
+	var matches PremierLeagueMatchesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&matches); err != nil {
+		return nil, err
+	}
+	if len(matches.Matches) == 0 {
+		return nil, fmt.Errorf("no matches found")
+	}
+	return &matches.Matches[len(matches.Matches)-1], nil // latest finished match
+}
+
+func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league FootballLeague, leagueName string) (string, error) {
+	match, err := nb.fetchLatestLeagueMatch(ctx, league)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch latest match: %v", err)
+	}
+	date := match.UtcDate[:10] // YYYY-MM-DD
+	prompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nMake it concise, engaging, under 280 characters, and include hashtags like #%s #Football.`,
+		leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
+	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
+	model.SetTemperature(0.7)
+	model.SetMaxOutputTokens(150)
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate summary: %v", err)
+	}
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no content generated")
+	}
+	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	content = strings.TrimSpace(content)
+	content = strings.Trim(content, "\"")
+	if len(content) > 280 {
+		content = content[:277] + "..."
+	}
+	return content, nil
+}
+
 func (nb *NewsBot) Run() error {
 	ctx := context.Background()
 
 	var content string
 	var err error
 
-	// Alternate between Premier League and Crypto news
-	if time.Now().Unix()%2 == 0 {
+	// Cycle: 0 = Premier League, 1 = La Liga, 2 = Bundesliga, 3 = Serie A, 4 = Ligue 1, 5 = Irish Premier, 6 = Crypto
+	switch time.Now().Unix() % 7 {
+	case 0:
 		log.Println("Generating Premier League news content from API...")
-		content, err = nb.generatePremierLeagueNewsFromAPI(ctx)
-	} else {
+		content, err = nb.generateLeagueNewsFromAPI(ctx, PremierLeague, "PremierLeague")
+	case 1:
+		log.Println("Generating La Liga news content from API...")
+		content, err = nb.generateLeagueNewsFromAPI(ctx, LaLiga, "LaLiga")
+	case 2:
+		log.Println("Generating Bundesliga news content from API...")
+		content, err = nb.generateLeagueNewsFromAPI(ctx, Bundesliga, "Bundesliga")
+	case 3:
+		log.Println("Generating Serie A news content from API...")
+		content, err = nb.generateLeagueNewsFromAPI(ctx, SerieA, "SerieA")
+	case 4:
+		log.Println("Generating Ligue 1 news content from API...")
+		content, err = nb.generateLeagueNewsFromAPI(ctx, Ligue1, "Ligue1")
+	case 5:
+		log.Println("Generating Irish Premier Division news content from API...")
+		content, err = nb.generateLeagueNewsFromAPI(ctx, IrishPremier, "IrishPremierDivision")
+	case 6:
 		log.Println("Generating Crypto news content from API...")
 		content, err = nb.generateCryptoNewsFromAPI(ctx)
 	}
