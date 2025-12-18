@@ -496,7 +496,7 @@ const (
 )
 
 func (nb *NewsBot) fetchLatestLeagueMatch(ctx context.Context, league FootballLeague) (*PremierLeagueMatch, error) {
-	url := fmt.Sprintf("https://api.football-data.org/v4/competitions/%s/matches?status=FINISHED&limit=1", league)
+	url := fmt.Sprintf("https://api.football-data.org/v4/competitions/%s/matches?status=FINISHED&limit=5", league)
 	client := &http.Client{Timeout: 10 * time.Second}
 	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -529,6 +529,7 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 		return "", fmt.Errorf("failed to fetch latest match: %v", err)
 	}
 	date := match.UtcDate[:10] // YYYY-MM-DD
+	fmt.Println(match)
 	prompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nMake it concise, engaging, under 280 characters, and include hashtags like #%s #Football.`,
 		leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
