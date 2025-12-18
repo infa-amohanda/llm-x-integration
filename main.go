@@ -25,6 +25,7 @@ type Config struct {
 	XAccessToken        string
 	XAccessTokenSecret  string
 	LiverpoolNewsPrompt string
+	FootballDataAPIKey  string // NEW
 }
 
 type NewsBot struct {
@@ -50,6 +51,27 @@ type TweetResponse struct {
 	} `json:"errors,omitempty"`
 }
 
+type PremierLeagueMatch struct {
+	HomeTeam struct {
+		Name string `json:"name"`
+	} `json:"homeTeam"`
+	AwayTeam struct {
+		Name string `json:"name"`
+	} `json:"awayTeam"`
+	UtcDate string `json:"utcDate"`
+	Status  string `json:"status"`
+	Score   struct {
+		FullTime struct {
+			Home int `json:"home"`
+			Away int `json:"away"`
+		} `json:"fullTime"`
+	} `json:"score"`
+}
+
+type PremierLeagueMatchesResponse struct {
+	Matches []PremierLeagueMatch `json:"matches"`
+}
+
 func loadConfig() (*Config, error) {
 	godotenv.Load()
 
@@ -60,6 +82,7 @@ func loadConfig() (*Config, error) {
 		XAccessToken:        os.Getenv("X_ACCESS_TOKEN"),
 		XAccessTokenSecret:  os.Getenv("X_ACCESS_TOKEN_SECRET"),
 		LiverpoolNewsPrompt: os.Getenv("LIVERPOOL_NEWS_PROMPT"),
+		FootballDataAPIKey:  os.Getenv("FOOTBALL_DATA_API_KEY"), // NEW
 	}
 
 	if config.LiverpoolNewsPrompt == "" {
@@ -72,6 +95,9 @@ func loadConfig() (*Config, error) {
 	if config.XAPIKey == "" || config.XAPIKeySecret == "" ||
 		config.XAccessToken == "" || config.XAccessTokenSecret == "" {
 		return nil, fmt.Errorf("all X API credentials are required")
+	}
+	if config.FootballDataAPIKey == "" {
+		return nil, fmt.Errorf("FOOTBALL_DATA_API_KEY is required")
 	}
 
 	return config, nil
@@ -284,6 +310,62 @@ func (nb *NewsBot) postToTwitter(content string) error {
 	return nil
 }
 
+func (nb *NewsBot) fetchLatestPremierLeagueMatch(ctx context.Context) (*PremierLeagueMatch, error) {
+	url := "https://api.football-data.org/v4/competitions/PL/matches?status=FINISHED&limit=1"
+	client := &http.Client{Timeout: 10 * time.Second}
+	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("X-Auth-Token", nb.config.FootballDataAPIKey)
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("football-data.org API error: %s", string(body))
+	}
+	var matches PremierLeagueMatchesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&matches); err != nil {
+		return nil, err
+	}
+	if len(matches.Matches) == 0 {
+		return nil, fmt.Errorf("no matches found")
+	}
+	return &matches.Matches[len(matches.Matches)-1], nil // latest finished match
+}
+
+func (nb *NewsBot) generatePremierLeagueNewsFromAPI(ctx context.Context) (string, error) {
+	match, err := nb.fetchLatestPremierLeagueMatch(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch latest match: %v", err)
+	}
+	// Format match info for Gemini
+	date := match.UtcDate[:10] // YYYY-MM-DD
+	prompt := fmt.Sprintf(`Generate a tweet about the latest Premier League result:\nDate: %s\n%s %d - %d %s\nMake it concise, engaging, under 280 characters, and include hashtags like #PremierLeague #EPL.`,
+		date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name)
+	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
+	model.SetTemperature(0.7)
+	model.SetMaxOutputTokens(150)
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate summary: %v", err)
+	}
+	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no content generated")
+	}
+	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	content = strings.TrimSpace(content)
+	content = strings.Trim(content, "\"")
+	if len(content) > 280 {
+		content = content[:277] + "..."
+	}
+	return content, nil
+}
+
 func (nb *NewsBot) generatePremierLeagueNews(ctx context.Context) (string, error) {
 	model := nb.geminiClient.GenerativeModel("gemini-2.5-flash-lite")
 	model.SetTemperature(0.7)
@@ -331,9 +413,9 @@ Current date context: %s %d, %d`,
 func (nb *NewsBot) Run() error {
 	ctx := context.Background()
 
-	log.Println("Generating Premier League news content...")
+	log.Println("Generating Premier League news content from API...")
 
-	content, err := nb.generatePremierLeagueNews(ctx)
+	content, err := nb.generatePremierLeagueNewsFromAPI(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to generate Premier League news: %v", err)
 	}
