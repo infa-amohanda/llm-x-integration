@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -388,6 +389,12 @@ func (nb *NewsBot) generatePremierLeagueNewsFromAPI(ctx context.Context) (string
 	return content, nil
 }
 
+func cleanPerplexityTweet(content string) string {
+	re := regexp.MustCompile(`\s*\(\d+\s*chars\)\s*(\[\d+\])*\s*$`)
+	content = re.ReplaceAllString(content, "")
+	return strings.TrimSpace(content)
+}
+
 func (nb *NewsBot) fetchPerplexityCryptoTweet(ctx context.Context, article *NewsAPIArticle) (string, error) {
 	if nb.config.PerplexityAPIKey == "" {
 		return "", fmt.Errorf("Perplexity API key not set")
@@ -447,6 +454,7 @@ func (nb *NewsBot) fetchPerplexityCryptoTweet(ctx context.Context, article *News
 	if len(content) > 280 {
 		content = content[:277] + "..."
 	}
+	content = cleanPerplexityTweet(content)
 	return content, nil
 }
 
@@ -510,6 +518,7 @@ func (nb *NewsBot) fetchPerplexityFootballTweet(ctx context.Context, leagueName 
 	if len(content) > 280 {
 		content = content[:277] + "..."
 	}
+	content = cleanPerplexityTweet(content)
 	return content, nil
 }
 
