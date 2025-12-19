@@ -291,7 +291,7 @@ func (nb *NewsBot) fetchPerplexityCryptoTweet(ctx context.Context, article *News
 	}
 	url := "https://api.perplexity.ai/chat/completions"
 	payload := map[string]interface{}{
-		"model": "sonar-pro",
+		"model": "sonar",
 		"messages": []map[string]string{
 			{
 				"role":    "system",
@@ -355,7 +355,7 @@ func (nb *NewsBot) fetchPerplexityFootballTweet(ctx context.Context, leagueName 
 	url := "https://api.perplexity.ai/chat/completions"
 	prompt := fmt.Sprintf("You are an expert football Twitter writer. Write engaging, informative tweets with emojis where appropriate. Always include relevant hashtags like #%s #Football #FootballNews. Keep tweets under 280 characters. Generate a tweet about the latest %s football result. The tweet must be at least 100 characters long, under 280 characters, engaging and informative.\nMatch: %s %d - %d %s\nDate: %s", leagueName, leagueName, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, match.UtcDate[:10])
 	payload := map[string]interface{}{
-		"model": "sonar-pro",
+		"model": "sonar",
 		"messages": []map[string]string{
 			{
 				"role":    "system",
