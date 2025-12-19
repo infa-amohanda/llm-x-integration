@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
@@ -143,117 +144,6 @@ func NewNewsBot(config *Config) (*NewsBot, error) {
 		geminiClient: geminiClient,
 		httpClient:   httpClient,
 	}, nil
-}
-
-func (nb *NewsBot) generateLiverpoolNews(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
-	model.SetTemperature(0.8) // Increased for more creativity
-	model.SetMaxOutputTokens(150)
-
-	// Get current date info for historical context
-	now := time.Now()
-	currentMonth := now.Format("January")
-	currentDay := now.Day()
-
-	prompt := fmt.Sprintf(`Generate an engaging tweet about Liverpool FC history for %s %d.
-
-Focus on one of these types of historical content:
-1. "On this day" historical events (matches, signings, achievements)
-2. Legendary players and their memorable moments
-3. Historic matches and victories
-4. Club records and milestones
-5. Memorable quotes from players/managers
-6. Stadium history (Anfield moments)
-7. European Cup/Champions League history
-8. League title victories
-9. FA Cup moments
-10. Derby matches against Everton or Manchester United
-
-Requirements:
-- Make it feel like a "throwback" or "on this day" style post
-- Include specific years, scores, or player names when possible
-- Keep it under 280 characters
-- Make it engaging for Liverpool fans
-- Include relevant hashtags like #LFC #Liverpool #OnThisDay #YNWA
-- Sound authentic and factual
-- Generate only the tweet text, no quotes or formatting
-
-Current date context: %s %d
-Make it feel timely and relevant to today's date if possible.`,
-		currentMonth, currentDay, currentMonth, currentDay)
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-	if err != nil {
-		return "", fmt.Errorf("failed to generate content: %v", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content generated")
-	}
-
-	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
-	content = strings.TrimSpace(content)
-	content = strings.Trim(content, "\"")
-
-	if len(content) > 280 {
-		content = content[:277] + "..."
-	}
-
-	return content, nil
-}
-
-func (nb *NewsBot) generateLiverpoolHistoryVariation(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-1.5-flash")
-	model.SetTemperature(0.8)
-	model.SetMaxOutputTokens(150)
-
-	// Random historical topics
-	topics := []string{
-		"legendary players like Steven Gerrard, Kenny Dalglish, or Ian Rush",
-		"historic European Cup victories in the 1970s and 1980s",
-		"memorable Premier League moments and title wins",
-		"Anfield atmosphere and famous stadium moments",
-		"classic derby matches against Everton or Manchester United",
-		"Bill Shankly or Bob Paisley management eras",
-		"Champions League victories in 2005 and 2019",
-		"FA Cup finals and memorable cup runs",
-		"record-breaking performances and club milestones",
-		"famous Liverpool chants and supporter culture",
-	}
-
-	// Pick a random topic
-	topic := topics[time.Now().Unix()%int64(len(topics))]
-
-	prompt := fmt.Sprintf(`Create an engaging historical tweet about Liverpool FC focusing on %s.
-
-Make it:
-- Nostalgic and celebratory
-- Include specific details (years, scores, names)
-- Under 280 characters
-- Engaging for Liverpool supporters
-- Include hashtags like #LFC #Liverpool #YNWA #History
-- Sound like a passionate fan sharing a great memory
-
-Generate only the tweet text, no formatting or quotes.`, topic)
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-	if err != nil {
-		return "", fmt.Errorf("failed to generate content: %v", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content generated")
-	}
-
-	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
-	content = strings.TrimSpace(content)
-	content = strings.Trim(content, "\"")
-
-	if len(content) > 280 {
-		content = content[:277] + "..."
-	}
-
-	return content, nil
 }
 
 func (nb *NewsBot) testAuth() error {
@@ -715,8 +605,8 @@ func (nb *NewsBot) Run() error {
 	var content string
 	var err error
 
-	// Cycle: 0 = Premier League, 1 = La Liga, 2 = Bundesliga, 3 = Serie A, 4 = Ligue 1, 5 = Irish Premier, 6 = Crypto
-	switch time.Now().Unix() % 7 {
+	// Randomly select news type: 0 = Premier League, 1 = La Liga, 2 = Bundesliga, 3 = Serie A, 4 = Ligue 1, 5 = Irish Premier, 6 = Crypto
+	switch rand.Intn(7) {
 	case 0:
 		log.Println("Generating Premier League news content from API...")
 		content, err = nb.generateLeagueNewsFromAPI(ctx, PremierLeague, "PremierLeague")
@@ -764,6 +654,9 @@ func (nb *NewsBot) Close() {
 
 func main() {
 	log.Println("Starting Liverpool News Bot...")
+
+	// Seed the random number generator once at startup
+	rand.Seed(time.Now().UnixNano())
 
 	config, err := loadConfig()
 	if err != nil {
