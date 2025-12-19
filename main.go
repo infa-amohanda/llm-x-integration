@@ -27,6 +27,7 @@ type Config struct {
 	LiverpoolNewsPrompt string
 	FootballDataAPIKey  string
 	NewsAPIKey          string // NEW
+	PerplexityAPIKey    string // NEW
 }
 
 type NewsBot struct {
@@ -100,6 +101,7 @@ func loadConfig() (*Config, error) {
 		LiverpoolNewsPrompt: os.Getenv("LIVERPOOL_NEWS_PROMPT"),
 		FootballDataAPIKey:  os.Getenv("FOOTBALL_DATA_API_KEY"), // NEW
 		NewsAPIKey:          os.Getenv("NEWS_API_KEY"),          // NEW
+		PerplexityAPIKey:    os.Getenv("PERPLEXITY_API_KEY"),    // NEW
 	}
 
 	if config.LiverpoolNewsPrompt == "" {
@@ -386,20 +388,147 @@ func (nb *NewsBot) generatePremierLeagueNewsFromAPI(ctx context.Context) (string
 	return content, nil
 }
 
+func (nb *NewsBot) fetchPerplexityCryptoTweet(ctx context.Context, article *NewsAPIArticle) (string, error) {
+	if nb.config.PerplexityAPIKey == "" {
+		return "", fmt.Errorf("Perplexity API key not set")
+	}
+	url := "https://api.perplexity.ai/chat/completions"
+	payload := map[string]interface{}{
+		"model": "sonar-pro",
+		"messages": []map[string]string{
+			{
+				"role":    "system",
+				"content": "You are an expert crypto Twitter writer. Write engaging, informative tweets with emojis where appropriate. Always include relevant hashtags like #Crypto #Blockchain #CryptoNews. Keep tweets under 280 characters.",
+			},
+			{
+				"role":    "user",
+				"content": fmt.Sprintf("Generate a tweet about this crypto news headline and summary.\nThe tweet must be at least 100 characters long, under 280 characters, engaging and informative.\nInclude hashtags like #Crypto #Blockchain #CryptoNews.\n\nTitle: %s\nDescription: %s\nSource: %s", article.Title, article.Description, article.Source.Name),
+			},
+		},
+		"max_tokens":  500,
+		"temperature": 0.8,
+		"top_p":       0.9,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal payload: %v", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+nb.config.PerplexityAPIKey)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call Perplexity API: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Perplexity API error: %s", string(body))
+	}
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode Perplexity response: %v", err)
+	}
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no choices returned from Perplexity")
+	}
+	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	if len(content) > 280 {
+		content = content[:277] + "..."
+	}
+	return content, nil
+}
+
+func (nb *NewsBot) fetchPerplexityFootballTweet(ctx context.Context, leagueName string, match *PremierLeagueMatch) (string, error) {
+	if nb.config.PerplexityAPIKey == "" {
+		return "", fmt.Errorf("Perplexity API key not set")
+	}
+	url := "https://api.perplexity.ai/chat/completions"
+	prompt := fmt.Sprintf("You are an expert football Twitter writer. Write engaging, informative tweets with emojis where appropriate. Always include relevant hashtags like #%s #Football #FootballNews. Keep tweets under 280 characters. Generate a tweet about the latest %s football result. The tweet must be at least 100 characters long, under 280 characters, engaging and informative.\nMatch: %s %d - %d %s\nDate: %s", leagueName, leagueName, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, match.UtcDate[:10])
+	payload := map[string]interface{}{
+		"model": "sonar-pro",
+		"messages": []map[string]string{
+			{
+				"role":    "system",
+				"content": fmt.Sprintf("You are an expert football Twitter writer. Write engaging, informative tweets with emojis where appropriate. Always include relevant hashtags like #%s #Football #FootballNews. Keep tweets under 280 characters.", leagueName),
+			},
+			{
+				"role":    "user",
+				"content": prompt,
+			},
+		},
+		"max_tokens":  500,
+		"temperature": 0.8,
+		"top_p":       0.9,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal payload: %v", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+nb.config.PerplexityAPIKey)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call Perplexity API: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Perplexity API error: %s", string(body))
+	}
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode Perplexity response: %v", err)
+	}
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no choices returned from Perplexity")
+	}
+	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	if len(content) > 280 {
+		content = content[:277] + "..."
+	}
+	return content, nil
+}
+
 func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error) {
 	article, err := nb.fetchLatestCryptoNews(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch crypto news: %v", err)
 	}
-	fmt.Println("article: ", article)
 	prompt := fmt.Sprintf(`Generate a tweet about this crypto news headline and summary.\nTitle: %s\nDescription: %s\nSource: %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging and informative.\n- Include hashtags like #Crypto #Blockchain #News.`,
 		article.Title, article.Description, article.Source.Name)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.7)
 	model.SetMaxOutputTokens(200)
-	fmt.Println("prompt: ", prompt)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
+		if strings.Contains(err.Error(), "429") {
+			log.Println("Gemini API rate limited, using Perplexity fallback for crypto...")
+			return nb.fetchPerplexityCryptoTweet(ctx, article)
+		}
 		return "", fmt.Errorf("failed to generate crypto summary: %v", err)
 	}
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
@@ -531,14 +660,18 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 	}
 	date := match.UtcDate[:10] // YYYY-MM-DD
 	fmt.Println("match: ", match)
-	prompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Keep it under 280 characters.\n- Make it engaging, informative, and detailed.\n- Do not use generic statements.\n- Include hashtags like #%s #Football.`,
-		leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
+	prompt := fmt.Sprintf(`Write a complete, engaging tweet (at least 100 but under 280 characters) about the latest %s football result.\n\nMatch: %s %d - %d %s\nDate: %s\n\nMake the tweet informative and detailed, mentioning key moments or context if possible. Avoid generic statements. Include hashtags like #%s #Football. Output only the tweet text.`,
+		leagueName, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, date, leagueName)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.8)
 	model.SetMaxOutputTokens(200)
 	fmt.Println("prompt: ", prompt)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
+		if strings.Contains(err.Error(), "429") {
+			log.Println("Gemini API rate limited, using Perplexity fallback for football...")
+			return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
+		}
 		return "", fmt.Errorf("failed to generate summary: %v", err)
 	}
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
@@ -552,10 +685,14 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 	}
 	if len(content) < 100 {
 		// Retry with a stronger prompt if too short
-		retryPrompt := fmt.Sprintf(`Generate a tweet about the latest %s result.\nDate: %s\n%s %d - %d %s\nRequirements:\n- The tweet must be at least 100 characters long.\n- Be detailed and informative.\n- Mention key facts, context, and impact.\n- Do not use generic statements.\n- Keep it under 280 characters.\n- Include hashtags like #%s #Football.`,
-			leagueName, date, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, leagueName)
+		retryPrompt := fmt.Sprintf(`Write a complete, detailed tweet (at least 100 but under 280 characters) about the latest %s football result.\n\nMatch: %s %d - %d %s\nDate: %s\n\nBe detailed and informative. Mention key facts, context, and impact. Avoid generic statements. Include hashtags like #%s #Football. Output only the tweet text.`,
+			leagueName, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, date, leagueName)
 		resp, err = model.GenerateContent(ctx, genai.Text(retryPrompt))
 		if err != nil {
+			if strings.Contains(err.Error(), "429") {
+				log.Println("Gemini API rate limited on retry, using Perplexity fallback for football...")
+				return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
+			}
 			return "", fmt.Errorf("failed to generate summary (retry): %v", err)
 		}
 		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
@@ -646,121 +783,4 @@ func main() {
 	}
 
 	log.Println("Bot execution completed successfully!")
-}
-
-func (nb *NewsBot) generateIndiaHistory(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
-	model.SetTemperature(0.8)
-	model.SetMaxOutputTokens(150)
-
-	// Get current date info for historical context
-	now := time.Now()
-	currentMonth := now.Format("January")
-	currentDay := now.Day()
-
-	prompt := fmt.Sprintf(`Generate an engaging tweet about Indian history for %s %d.
-
-Focus on one of these types of historical content:
-1. "On this day" historical events (independence movement, ancient history, battles)
-2. Great Indian leaders and freedom fighters (Gandhi, Nehru, Bose, Chandragupta, Ashoka)
-3. Ancient Indian achievements (science, mathematics, philosophy, architecture)
-4. Cultural and religious milestones (Buddhism, Hinduism, art, literature)
-5. Medieval Indian empires (Mughal, Maratha, Chola, Vijayanagara)
-6. Colonial period events and resistance movements
-7. Post-independence achievements (space program, technology, democracy)
-8. Indian inventions and discoveries (zero, decimal system, surgery, astronomy)
-9. Famous Indian monuments and their history (Taj Mahal, Red Fort, temples)
-10. Indian scientists, mathematicians, and scholars throughout history
-
-Requirements:
-- Make it feel like a "throwback" or "on this day" style post
-- Include specific years, names, or achievements when possible
-- Keep it under 280 characters
-- Make it engaging and educational
-- Include relevant hashtags like #IndianHistory #India #OnThisDay #Heritage #Culture
-- Sound authentic and factual
-- Generate only the tweet text, no quotes or formatting
-
-Current date context: %s %d
-Make it feel timely and relevant to today's date if possible.`,
-		currentMonth, currentDay, currentMonth, currentDay)
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-	if err != nil {
-		return "", fmt.Errorf("failed to generate content: %v", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content generated")
-	}
-
-	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
-	content = strings.TrimSpace(content)
-	content = strings.Trim(content, "\"")
-
-	if len(content) > 280 {
-		content = content[:277] + "..."
-	}
-
-	return content, nil
-}
-
-func (nb *NewsBot) generateIndiaHistoryVariation(ctx context.Context) (string, error) {
-	model := nb.geminiClient.GenerativeModel("gemini-1.5-flash")
-	model.SetTemperature(0.8)
-	model.SetMaxOutputTokens(150)
-
-	// Random historical topics about India
-	topics := []string{
-		"ancient Indian scientific achievements and mathematicians like Aryabhata",
-		"the Mughal Empire and rulers like Akbar and Shah Jahan",
-		"Indian freedom fighters and the independence movement",
-		"ancient Indian philosophy and spiritual leaders like Buddha",
-		"the Mauryan Empire and Emperor Ashoka's reign",
-		"Indian contributions to medicine and surgery in ancient times",
-		"the Chola dynasty and their maritime achievements",
-		"Indian art, architecture, and monument construction",
-		"the Gupta period known as the Golden Age of India",
-		"Indian inventions that changed the world like zero and decimal system",
-		"the Maratha Empire and Shivaji's military strategies",
-		"Indian classical literature and epic poems like Ramayana and Mahabharata",
-		"ancient Indian universities like Nalanda and Takshashila",
-		"Indian space achievements and modern technological progress",
-		"the Indus Valley Civilization and Harappan culture",
-	}
-
-	// Pick a random topic
-	topic := topics[time.Now().Unix()%int64(len(topics))]
-
-	prompt := fmt.Sprintf(`Create an engaging historical tweet about India focusing on %s.
-
-Make it:
-- Educational and inspiring
-- Include specific details (years, names, achievements)
-- Under 280 characters
-- Engaging for history enthusiasts
-- Include hashtags like #IndianHistory #India #Heritage #Culture #Achievement
-- Sound like sharing fascinating historical knowledge
-
-Generate only the tweet text, no formatting or quotes.`, topic)
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-	if err != nil {
-		return "", fmt.Errorf("failed to generate content: %v", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content generated")
-	}
-
-	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
-	content = strings.TrimSpace(content)
-	content = strings.Trim(content, "\"")
-
-	if len(content) > 280 {
-		content = content[:277] + "..."
-
-	}
-
-	return content, nil
 }
