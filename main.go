@@ -525,14 +525,12 @@ func (nb *NewsBot) generateCryptoNewsFromAPI(ctx context.Context) (string, error
 	model.SetMaxOutputTokens(200)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
-		if strings.Contains(err.Error(), "429") {
-			log.Println("Gemini API rate limited, using Perplexity fallback for crypto...")
-			return nb.fetchPerplexityCryptoTweet(ctx, article)
-		}
-		return "", fmt.Errorf("failed to generate crypto summary: %v", err)
+		log.Println("Gemini API failed, using Perplexity fallback for crypto...")
+		return nb.fetchPerplexityCryptoTweet(ctx, article)
 	}
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content generated")
+		log.Println("Gemini API returned no content, using Perplexity fallback for crypto...")
+		return nb.fetchPerplexityCryptoTweet(ctx, article)
 	}
 	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
 	content = strings.TrimSpace(content)
@@ -659,23 +657,19 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 		return "", fmt.Errorf("failed to fetch latest match: %v", err)
 	}
 	date := match.UtcDate[:10] // YYYY-MM-DD
-	fmt.Println("match: ", match)
 	prompt := fmt.Sprintf(`Write a complete, engaging tweet (at least 100 but under 280 characters) about the latest %s football result.\n\nMatch: %s %d - %d %s\nDate: %s\n\nMake the tweet informative and detailed, mentioning key moments or context if possible. Avoid generic statements. Include hashtags like #%s #Football. Output only the tweet text.`,
 		leagueName, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, date, leagueName)
 	model := nb.geminiClient.GenerativeModel("gemini-flash-latest")
 	model.SetTemperature(0.8)
 	model.SetMaxOutputTokens(200)
-	fmt.Println("prompt: ", prompt)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
-		if strings.Contains(err.Error(), "429") {
-			log.Println("Gemini API rate limited, using Perplexity fallback for football...")
-			return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
-		}
-		return "", fmt.Errorf("failed to generate summary: %v", err)
+		log.Println("Gemini API failed, using Perplexity fallback for football...")
+		return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
 	}
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content generated")
+		log.Println("Gemini API returned no content, using Perplexity fallback for football...")
+		return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
 	}
 	content := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
 	content = strings.TrimSpace(content)
@@ -689,14 +683,12 @@ func (nb *NewsBot) generateLeagueNewsFromAPI(ctx context.Context, league Footbal
 			leagueName, match.HomeTeam.Name, match.Score.FullTime.Home, match.Score.FullTime.Away, match.AwayTeam.Name, date, leagueName)
 		resp, err = model.GenerateContent(ctx, genai.Text(retryPrompt))
 		if err != nil {
-			if strings.Contains(err.Error(), "429") {
-				log.Println("Gemini API rate limited on retry, using Perplexity fallback for football...")
-				return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
-			}
-			return "", fmt.Errorf("failed to generate summary (retry): %v", err)
+			log.Println("Gemini API failed on retry, using Perplexity fallback for football...")
+			return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
 		}
 		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-			return "", fmt.Errorf("no content generated (retry)")
+			log.Println("Gemini API returned no content on retry, using Perplexity fallback for football...")
+			return nb.fetchPerplexityFootballTweet(ctx, leagueName, match)
 		}
 		content = fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
 		content = strings.TrimSpace(content)
