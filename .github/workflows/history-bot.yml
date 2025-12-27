@@ -1,9 +1,9 @@
 name: Premier League Bot
 
 on:
-  schedule:
+  # schedule:
     # Run every day at 08:00, 13:00, 18:00, and 20:00 UTC
-    - cron: '0 8,13,18,20 * * *'
+    # - cron: '0 8,13,18,20 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
